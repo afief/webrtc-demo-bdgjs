@@ -14,18 +14,22 @@
   
   <title>Peer connection</title>
   <link href="//fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet" type="text/css">
+  <link href="/main.css" rel="stylesheet" type="text/css">
   
 </head>
 
 <body>
   
   <div id="container">
-    <video id="localVideo" playsinline autoplay muted></video>
-    <video id="remoteVideo" playsinline autoplay></video>
-    
-    <div class="box">
-      <button id="startButton">Start</button>
-      <button id="hangupButton">Hang Up</button>
+    <div class="login-page" id="loginPage">
+        <input type="text" id="inputId" value="" placeholder="Input Call ID">
+        <button id="startButton">Start</button>
+    </div>
+    <div class="call-page" id="callPage">
+      <video id="localVideo" playsinline autoplay muted></video>
+      <video id="remoteVideo" playsinline autoplay></video>
+
+      <button id="hangupButton">STOP</button>
     </div>
   </div>
   

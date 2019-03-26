@@ -2,26 +2,18 @@ const session = {}
 
 let socket
 let isHost = false
+let localStream
+let peer
 
 const startButton = document.getElementById('startButton')
 const hangupButton = document.getElementById('hangupButton')
-
 const localVideo = document.getElementById('localVideo')
 const remoteVideo = document.getElementById('remoteVideo')
-
-localVideo.addEventListener('loadedmetadata', function() {
-  console.log(`Local video videoWidth: ${this.videoWidth}px,  videoHeight: ${this.videoHeight}px`);
-})
-
-remoteVideo.addEventListener('loadedmetadata', function() {
-  console.log(`Remote video videoWidth: ${this.videoWidth}px,  videoHeight: ${this.videoHeight}px`);
-})
+const loginPage = document.getElementById('loginPage')
+const callPage = document.getElementById('callPage')
 
 startButton.addEventListener('click', start)
 hangupButton.addEventListener('click', stopCall)
-
-let localStream
-let peer
 
 function createPeer () {
   peer = new RTCPeerConnection({})  
@@ -119,6 +111,16 @@ function onIceStateChange() {
   }
 }
 
+function showLogin (val) {
+  if (val) {
+    loginPage.style.display = 'table'
+    callPage.style.display = 'none'
+  } else {
+    loginPage.style.display = 'none'
+    callPage.style.display = 'block'
+  }
+}
+
 function stopCall () {
   peer.close()
   socket.close()
@@ -128,6 +130,7 @@ function stopCall () {
   remoteVideo.srcObject = null
   startButton.disabled = false
   localStream = false
+  showLogin(true)
 }
 
 
@@ -140,10 +143,12 @@ function connectWebSocket () {
     switch(res.result) {
       case 1:
         isHost = true
+        showLogin(false)
         createPeer ()
         call()
         break
       case 2:
+        showLogin(false)
         createPeer ()
         if (res.host.desc) {
           receive(res.host.desc).then(function() {
