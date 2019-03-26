@@ -9,14 +9,21 @@ const startButton = document.getElementById('startButton')
 const hangupButton = document.getElementById('hangupButton')
 const localVideo = document.getElementById('localVideo')
 const remoteVideo = document.getElementById('remoteVideo')
+const inputId = document.getElementById('inputId')
 const loginPage = document.getElementById('loginPage')
 const callPage = document.getElementById('callPage')
 
-startButton.addEventListener('click', start)
+startButton.addEventListener('click', register)
 hangupButton.addEventListener('click', stopCall)
 
 function createPeer () {
-  peer = new RTCPeerConnection({})  
+  peer = new RTCPeerConnection({
+    iceServers: [
+      {
+        urls: "stun:stun.l.google.com:19302"
+      }
+    ]
+  })  
   peer.addEventListener('icecandidate', onIceCandidate)
   peer.addEventListener('iceconnectionstatechange', onIceStateChange)
   peer.addEventListener('track', gotRemoteStream)
@@ -26,8 +33,7 @@ function createPeer () {
 
 function register () {
   connectWebSocket().then(() => {
-    console.log('success')
-    socket.emit('register', '111')
+    socket.emit('register', inputId.value)
   }).catch(() => {
     window.alert('failed to connect to websocket.')
   })
@@ -35,10 +41,10 @@ function register () {
 
 function start () {
   startButton.disabled = true
-  navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(function (stream) {
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(function (stream) {
     localVideo.srcObject = stream
     localStream = stream
-    register()
+    return stream
   }).catch(function (e) {
     alert(`getUserMedia() error: ${e.name}`)
   })
@@ -144,19 +150,23 @@ function connectWebSocket () {
       case 1:
         isHost = true
         showLogin(false)
-        createPeer ()
-        call()
+        start().then(function () {
+          createPeer()
+          call()
+        })
         break
       case 2:
         showLogin(false)
-        createPeer ()
-        if (res.host.desc) {
-          receive(res.host.desc).then(function() {
-            if (res.host.ice) {
-              receiveIce(res.host.ice)
-            }
-          })
-        }
+        start().then(function () {
+          createPeer ()
+          if (res.host.desc) {
+            receive(res.host.desc).then(function() {
+              if (res.host.ice) {
+                receiveIce(res.host.ice)
+              }
+            })
+          }
+        })
         break
       default:
         window.alert(res.message || 'Something Wrong with register result')
