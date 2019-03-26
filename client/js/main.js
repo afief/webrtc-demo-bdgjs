@@ -1,42 +1,10 @@
 const session = {}
-const socket = io()
 
+let socket
 let isHost = false
 
-socket.on('reg-result', function (res) {
-  console.log('@ reg result', res)
-  switch(res.result) {
-    case 1:
-      isHost = true
-      createPeer ()
-      call()
-      break
-    case 2:
-      createPeer ()
-      if (res.host.desc) {
-        receive(res.host.desc).then(function() {
-          if (res.host.ice) {
-            receiveIce(res.host.ice)
-          }
-        })
-      }
-      break
-    default:
-      window.alert(res.message || 'Something Wrong with register result')
-      break
-  }
-})
-
-socket.on('sdp', function (desc) {
-  receive(desc)
-})
-
-socket.on('ice-new', function (ice) {
-  receiveIce(ice)
-})
-
 const startButton = document.getElementById('startButton')
-const callButton = document.getElementById('callButton')
+const hangupButton = document.getElementById('hangupButton')
 
 const localVideo = document.getElementById('localVideo')
 const remoteVideo = document.getElementById('remoteVideo')
@@ -50,7 +18,7 @@ remoteVideo.addEventListener('loadedmetadata', function() {
 })
 
 startButton.addEventListener('click', start)
-callButton.addEventListener('click', call)
+hangupButton.addEventListener('click', stopCall)
 
 let localStream
 let peer
@@ -58,14 +26,19 @@ let peer
 function createPeer () {
   peer = new RTCPeerConnection({})  
   peer.addEventListener('icecandidate', onIceCandidate)
-  // peer.addEventListener('iceconnectionstatechange', e => onIceStateChange(peer, e))
+  peer.addEventListener('iceconnectionstatechange', onIceStateChange)
   peer.addEventListener('track', gotRemoteStream)
 
   localStream.getTracks().forEach(track => peer.addTrack(track, localStream))
 }
 
 function register () {
-  socket.emit('register', '111')
+  connectWebSocket().then(() => {
+    console.log('success')
+    socket.emit('register', '111')
+  }).catch(() => {
+    window.alert('failed to connect to websocket.')
+  })
 }
 
 function start () {
@@ -73,7 +46,6 @@ function start () {
   navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(function (stream) {
     localVideo.srcObject = stream
     localStream = stream
-    callButton.disabled = false 
     register()
   }).catch(function (e) {
     alert(`getUserMedia() error: ${e.name}`)
@@ -122,7 +94,7 @@ function gotRemoteStream(e) {
   console.log('### got remote stream')
   if (remoteVideo.srcObject !== e.streams[0]) {
     remoteVideo.srcObject = e.streams[0]
-    console.log('pc2 received remote stream')
+    console.log('### set remote stream')
   }
 }
 
@@ -133,25 +105,82 @@ async function onIceCandidate(event) {
   }
 }
 
-function onAddIceCandidateSuccess(pc) {
-  console.log(`${getName(pc)} addIceCandidate success`);
-}
+function onIceStateChange() {
+  if (!peer) return
 
-function onIceStateChange(pc, event) {
-  if (pc) {
-    console.log(`${getName(pc)} ICE state: ${pc.iceConnectionState}`);
-    console.log('ICE state change event: ', event);
+  const state = peer.iceConnectionState
+  console.log('^ ice state changed', state)
+  switch(state) {
+    case 'closed':
+    case 'failed':
+    case 'disconnected':
+      // closeVideoCall()
+      break
   }
 }
 
-function onAddIceCandidateError(pc, error) {
-  console.log(`${getName(pc)} failed to add ICE Candidate: ${error.toString()}`);
+function stopCall () {
+  peer.close()
+  socket.close()
+  peer = null
+  isHost = false
+  localVideo.srcObject = null
+  remoteVideo.srcObject = null
+  startButton.disabled = false
+  localStream = false
 }
 
-function getName (pc) {
-  return (pc === pc1) ? 'pc1' : 'pc2'
-}
 
-function getOtherPc(pc) {
-  return (pc === pc1) ? pc2 : pc1;
+/* Socket */
+function connectWebSocket () {
+  socket = io()
+
+  socket.on('reg-result', function (res) {
+    console.log('@ reg result', res)
+    switch(res.result) {
+      case 1:
+        isHost = true
+        createPeer ()
+        call()
+        break
+      case 2:
+        createPeer ()
+        if (res.host.desc) {
+          receive(res.host.desc).then(function() {
+            if (res.host.ice) {
+              receiveIce(res.host.ice)
+            }
+          })
+        }
+        break
+      default:
+        window.alert(res.message || 'Something Wrong with register result')
+        break
+    }
+  })
+  
+  socket.on('sdp', function (desc) {
+    receive(desc)
+  })
+  
+  socket.on('ice-new', function (ice) {
+    receiveIce(ice)
+  })
+  
+  socket.on('partner-disconnected', function () {
+    console.log('- partner disconnected')
+    stopCall()
+  })
+
+  return new Promise((resolve, reject) => {
+    socket.on('connect', function () {
+      resolve(1)
+    })
+    socket.on('connect_error', function () {
+      reject(1)
+    })
+    socket.on('connect_timeout', function () {
+      reject(1)
+    })
+  })
 }

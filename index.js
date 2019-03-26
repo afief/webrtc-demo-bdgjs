@@ -37,26 +37,39 @@ io.on('connection', function (socket) {
   socket.on('sdp', function (desc) {
     console.log('% sdp', socket.user.id, !!desc)
     socket.user.desc = desc
-    if (socket.user.isHost && sessions[socket.user.id].remoteSocket) {
-      sessions[socket.user.id].remoteSocket.emit('sdp', desc)
-    } else if (!socket.user.isHost && sessions[socket.user.id].hostSocket) {
-      sessions[socket.user.id].hostSocket.emit('sdp', desc)
+    if (getPartner()) {
+      getPartner().emit('sdp', desc)
     }
   })
 
   socket.on('ice-new', function (ice) {
     console.log('% ice', socket.user.id, !!ice)
     socket.user.ice = ice
-    if (socket.user.isHost && sessions[socket.user.id].remoteSocket) {
-      sessions[socket.user.id].remoteSocket.emit('ice-new', ice)
-    } else if (!socket.user.isHost && sessions[socket.user.id].hostSocket) {
-      sessions[socket.user.id].hostSocket.emit('ice-new', ice)
+    if (getPartner()) {
+      getPartner().emit('ice-new', ice)
     }
   })
 
   socket.on('disconnect', function () {
-    console.log('* disconnect', socket.user)
+    console.log('* disconnect', socket.user.id, socket.user.isHost)
+
+    if (getPartner()) {
+      getPartner().emit('partner-disconnected', 1)
+    }
+
+    delete sessions[socket.user.id]
   })
+
+  function getPartner() {
+    if (!sessions[socket.user.id]) return false
+
+    if (socket.user.isHost && sessions[socket.user.id].remoteSocket) {
+      return sessions[socket.user.id].remoteSocket
+    } else if (!socket.user.isHost && sessions[socket.user.id].hostSocket) {
+      return sessions[socket.user.id].hostSocket
+    }
+    return false
+  }
 })
 
 const port = process.env.PORT || 3000
