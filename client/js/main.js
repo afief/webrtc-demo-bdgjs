@@ -1,18 +1,38 @@
 const session = {}
 const socket = io()
+
+let isHost = false
+
 socket.on('reg-result', function (res) {
   console.log('@ reg result', res)
   switch(res.result) {
     case 1:
-      start()
+      isHost = true
+      createPeer ()
+      call()
       break
     case 2:
-      receive(res.host.desc)
+      createPeer ()
+      if (res.host.desc) {
+        receive(res.host.desc).then(function() {
+          if (res.host.ice) {
+            receiveIce(res.host.ice)
+          }
+        })
+      }
       break
     default:
       window.alert(res.message || 'Something Wrong with register result')
       break
   }
+})
+
+socket.on('sdp', function (desc) {
+  receive(desc)
+})
+
+socket.on('ice-new', function (ice) {
+  receiveIce(ice)
 })
 
 const startButton = document.getElementById('startButton')
@@ -29,138 +49,88 @@ remoteVideo.addEventListener('loadedmetadata', function() {
   console.log(`Remote video videoWidth: ${this.videoWidth}px,  videoHeight: ${this.videoHeight}px`);
 })
 
-startButton.addEventListener('click', register)
+startButton.addEventListener('click', start)
 callButton.addEventListener('click', call)
 
 let localStream
-let pc1
-let pc2
+let peer
 
-async function register () {
+function createPeer () {
+  peer = new RTCPeerConnection({})  
+  peer.addEventListener('icecandidate', onIceCandidate)
+  // peer.addEventListener('iceconnectionstatechange', e => onIceStateChange(peer, e))
+  peer.addEventListener('track', gotRemoteStream)
+
+  localStream.getTracks().forEach(track => peer.addTrack(track, localStream))
+}
+
+function register () {
   socket.emit('register', '111')
 }
 
-async function start () {
+function start () {
   startButton.disabled = true
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+  navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(function (stream) {
     localVideo.srcObject = stream
     localStream = stream
     callButton.disabled = false 
-    call()
-  } catch (e) {
+    register()
+  }).catch(function (e) {
     alert(`getUserMedia() error: ${e.name}`)
-  }
+  })
 }
 
-async function call () {
-  const configuration = {}
-  pc1 = new RTCPeerConnection(configuration)
-  pc2 = new RTCPeerConnection(configuration)
-  
-  pc1.addEventListener('icecandidate', e => onIceCandidate(pc1, e))
-  pc2.addEventListener('icecandidate', e => onIceCandidate(pc2, e))
+function call () {
+  console.log('# call')
 
-  pc1.addEventListener('iceconnectionstatechange', e => onIceStateChange(pc1, e))
-  pc2.addEventListener('iceconnectionstatechange', e => onIceStateChange(pc2, e))
-
-  pc2.addEventListener('track', gotRemoteStream)
-
-  localStream.getTracks().forEach(track => pc1.addTrack(track, localStream))
-
-  try {
-    console.log('pc1 createOffer start');
-    const offer = await pc1.createOffer({
-      offerToReceiveAudio: 1,
-      offerToReceiveVideo: 1
-    });
-    console.log('offer', offer)
-    socket.emit('sdp', offer)
-    await onCreateOfferSuccess(offer);
-  } catch (e) {
-    onCreateSessionDescriptionError(e);
-  }
+  return peer.createOffer().then(function (offer) {
+    return peer.setLocalDescription(offer);
+  }).then(function () {
+    socket.emit('sdp', peer.localDescription)
+  }).catch(function (error) {
+    console.log(`Failed to create session description: ${error.toString()}`);
+  })
 }
 
-async function onCreateOfferSuccess(desc) {
-  console.log(`Offer from pc1\n${desc.sdp}`);
-  console.log('pc1 setLocalDescription start');
-  try {
-    await pc1.setLocalDescription(desc);
-    onSetLocalSuccess(pc1);
-  } catch (e) {
-    onSetSessionDescriptionError(e);
+function receive (desc) {
+  console.log('# receive')
+
+  if (isHost) {
+    return peer.setRemoteDescription(desc)
   }
 
-  console.log('pc2 setRemoteDescription start');
-  try {
-    await pc2.setRemoteDescription(desc);
-    onSetRemoteSuccess(pc2);
-  } catch (e) {
-    onSetSessionDescriptionError(e);
-  }
-
-  console.log('pc2 createAnswer start');
-  // Since the 'remote' side has no media stream we need
-  // to pass in the right constraints in order for it to
-  // accept the incoming offer of audio and video.
-  try {
-    const answer = await pc2.createAnswer();
-    await onCreateAnswerSuccess(answer);
-  } catch (e) {
-    onCreateSessionDescriptionError(e);
-  }
+  return peer.setRemoteDescription(desc).then(function() {
+    return peer.createAnswer()
+  }).then(function(answer) {
+    return peer.setLocalDescription(answer)
+  }).then(function () {
+    socket.emit('sdp', peer.localDescription)
+  }).catch(function (error) {
+    console.log('Receive Offer Error', error.toString())
+  })
 }
 
-async function onCreateAnswerSuccess(desc) {
-  console.log(`Answer from pc2:\n${desc.sdp}`);
-  console.log('pc2 setLocalDescription start');
-  try {
-    await pc2.setLocalDescription(desc);
-    onSetLocalSuccess(pc2);
-  } catch (e) {
-    onSetSessionDescriptionError(e);
-  }
-  console.log('pc1 setRemoteDescription start');
-  try {
-    await pc1.setRemoteDescription(desc);
-    onSetRemoteSuccess(pc1);
-  } catch (e) {
-    onSetSessionDescriptionError(e);
-  }
-}
-
-function onSetLocalSuccess(pc) {
-  console.log(`${getName(pc)} setLocalDescription complete`);
-}
-
-function onSetRemoteSuccess(pc) {
-  console.log(`${getName(pc)} setRemoteDescription complete`);
-}
-
-function onSetSessionDescriptionError(error) {
-  console.log(`Failed to set session description: ${error.toString()}`);
-}
-
-function onCreateSessionDescriptionError(error) {
-  console.log(`Failed to create session description: ${error.toString()}`);
+function receiveIce (ice) {
+  console.log('# receive ice', ice)
+  const candidate = new RTCIceCandidate(ice)
+  return peer.addIceCandidate(candidate).catch(function (err) {
+    console.log('! failed to add ice candidate', err.toString())
+  })
 }
 
 function gotRemoteStream(e) {
+  console.log('### got remote stream')
   if (remoteVideo.srcObject !== e.streams[0]) {
     remoteVideo.srcObject = e.streams[0]
     console.log('pc2 received remote stream')
   }
 }
 
-async function onIceCandidate(pc, event) {
-  try {
-    await (getOtherPc(pc).addIceCandidate(event.candidate));
-    onAddIceCandidateSuccess(pc)
-  } catch (e) {
-    onAddIceCandidateError(pc, e);
+async function onIceCandidate(event) {
+  if (event.candidate) {
+    console.log('* send ice', event.candidate)
+    socket.emit('ice-new', event.candidate)
   }
-  console.log(`${getName(pc)} ICE candidate:\n${event.candidate ? event.candidate.candidate : '(null)'}`);
 }
 
 function onAddIceCandidateSuccess(pc) {

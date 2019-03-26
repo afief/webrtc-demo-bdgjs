@@ -38,9 +38,19 @@ io.on('connection', function (socket) {
     console.log('% sdp', socket.user.id, !!desc)
     socket.user.desc = desc
     if (socket.user.isHost && sessions[socket.user.id].remoteSocket) {
-      sessions[socket.user.id].remoteSocket.emit('host-sdp', desc)
+      sessions[socket.user.id].remoteSocket.emit('sdp', desc)
     } else if (!socket.user.isHost && sessions[socket.user.id].hostSocket) {
-      sessions[socket.user.id].hostSocket.emit('remote-sdp', desc)
+      sessions[socket.user.id].hostSocket.emit('sdp', desc)
+    }
+  })
+
+  socket.on('ice-new', function (ice) {
+    console.log('% ice', socket.user.id, !!ice)
+    socket.user.ice = ice
+    if (socket.user.isHost && sessions[socket.user.id].remoteSocket) {
+      sessions[socket.user.id].remoteSocket.emit('ice-new', ice)
+    } else if (!socket.user.isHost && sessions[socket.user.id].hostSocket) {
+      sessions[socket.user.id].hostSocket.emit('ice-new', ice)
     }
   })
 
