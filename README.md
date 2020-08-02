@@ -2,8 +2,8 @@
 
 startup
 ```
-yarn install
-yarn start
+npm install
+npm start
 ```
 
 ### Deploy to heroku
